@@ -41,6 +41,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',Tahoma,Arial,sans-s
 .hdr-left{display:flex;flex-direction:column;gap:1px}
 .hdr-welcome{font-size:11px;color:var(--gold-d);letter-spacing:.5px}
 .hdr-name{font-size:16px;font-weight:800;color:var(--gold)}
+.hdr-icons{display:flex;gap:8px;align-items:center}
 .hdr-icon{width:36px;height:36px;border-radius:50%;border:1px solid var(--gold-br);background:var(--gold-bg);display:flex;align-items:center;justify-content:center;cursor:pointer}
 .hdr-icon svg{width:18px;height:18px;fill:var(--gold)}
 
@@ -180,11 +181,16 @@ option{background:#1a1a1a}
       <div class="hdr-welcome" id="hdr-welcome">نظام</div>
       <div class="hdr-name" id="hdr-name">إدارة قضايا المستشار</div>
     </div>
-    <div style="position:relative">
-      <button class="hdr-icon" onclick="showNotifPanel()">
-        <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+    <div class="hdr-icons">
+      <button class="hdr-icon" onclick="showPrintMenu()" title="طباعة وتصدير">
+        <svg viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>
       </button>
-      <div class="notif-dot" id="notif-dot"></div>
+      <div style="position:relative">
+        <button class="hdr-icon" onclick="showNotifPanel()">
+          <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+        </button>
+        <div class="notif-dot" id="notif-dot"></div>
+      </div>
     </div>
   </div>
   <div class="content" id="content"></div>
@@ -214,14 +220,36 @@ const PHONE_ME = "01026024266";
 const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 const DAYS = ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 
-// ─── STORE ───────────────────────────────────────────────
+// ─── STORE (safe storage wrapper) ─────────────────────────
+// Falls back to an in-memory store if localStorage is blocked
+// (this happens e.g. when opening the file directly as file:// in some browsers).
+let memoryFallback = {};
+let storageBlocked = false;
+function safeGet(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v;
+  } catch (e) {
+    storageBlocked = true;
+    return (key in memoryFallback) ? memoryFallback[key] : fallback;
+  }
+}
+function safeSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    storageBlocked = true;
+    memoryFallback[key] = value;
+  }
+}
+
 let store = {
-  profile: JSON.parse(localStorage.getItem('qd_profile') || 'null'),
-  cases: JSON.parse(localStorage.getItem('qd_cases') || '[]')
+  profile: JSON.parse(safeGet('qd_profile', 'null')),
+  cases: JSON.parse(safeGet('qd_cases', '[]'))
 };
 function save() {
-  localStorage.setItem('qd_profile', JSON.stringify(store.profile));
-  localStorage.setItem('qd_cases', JSON.stringify(store.cases));
+  safeSet('qd_profile', JSON.stringify(store.profile));
+  safeSet('qd_cases', JSON.stringify(store.cases));
 }
 
 // ─── ONBOARDING ──────────────────────────────────────────
@@ -549,9 +577,9 @@ function confirmDelete(id) {
   if (!c) return;
   if (!confirm('حذف قضية "' + c.name + '"؟\n\nالجلسات ستُحذف، لكن السجل المالي سيبقى محفوظاً باسمها.')) return;
   // Archive financial record before deleting
-  const archive = JSON.parse(localStorage.getItem('qd_archive') || '[]');
+  const archive = JSON.parse(safeGet('qd_archive', '[]'));
   archive.push({ id:c.id, name:c.name, client:c.client, type:c.type, totalFee:c.totalFee, paid:c.paid, deletedAt: new Date().toLocaleDateString('ar-EG') });
-  localStorage.setItem('qd_archive', JSON.stringify(archive));
+  safeSet('qd_archive', JSON.stringify(archive));
   store.cases = store.cases.filter(x=>x.id!==id);
   save(); closeModal(); render();
 }
@@ -577,7 +605,7 @@ function renderCases() {
   if (!store.cases.length) {
     html = `<div class="empty"><svg viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z"/></svg><p>لا توجد قضايا</p><small>اضغط + لإضافة قضية</small></div>`;
   } else {
-    html = `<div class="sct">كل القضايا (${store.cases.length}) — ✓ لحذف القضية</div>`;
+    html = `<div class="sct">كل القضايا (${store.cases.length}) — 🗑️ لحذف القضية</div>`;
     store.cases.forEach(c => { html += caseCardHTML(c, true); });
   }
   html += `<div class="spacer"></div>`;
@@ -637,7 +665,7 @@ function renderFinance() {
   });
 
   // Show archived (deleted) cases financial records
-  const archive = JSON.parse(localStorage.getItem('qd_archive') || '[]');
+  const archive = JSON.parse(safeGet('qd_archive', '[]'));
   if (archive.length) {
     html += `<div class="sct" style="margin-top:20px">📂 سجل القضايا المحذوفة (مالي فقط)</div>`;
     archive.forEach(a=>{
@@ -662,9 +690,9 @@ function renderFinance() {
 
 function removeArchive(id) {
   if (!confirm('حذف هذا السجل المالي نهائياً؟')) return;
-  let archive = JSON.parse(localStorage.getItem('qd_archive') || '[]');
+  let archive = JSON.parse(safeGet('qd_archive', '[]'));
   archive = archive.filter(a=>String(a.id)!==String(id));
-  localStorage.setItem('qd_archive', JSON.stringify(archive));
+  safeSet('qd_archive', JSON.stringify(archive));
   render();
 }
 
@@ -989,7 +1017,7 @@ function printFinance() {
   const totalFee = store.cases.reduce((s,c)=>s+c.totalFee,0);
   const totalPaid = store.cases.reduce((s,c)=>s+c.paid,0);
   const totalDue = totalFee - totalPaid;
-  const archive = JSON.parse(localStorage.getItem('qd_archive')||'[]');
+  const archive = JSON.parse(safeGet('qd_archive', '[]'));
 
   let rows = store.cases.map(c => {
     const due = c.totalFee - c.paid;
@@ -1112,7 +1140,20 @@ if ('serviceWorker' in navigator) {
 }
 
 // ─── INIT ────────────────────────────────────────────────
-checkOnboard();
+try {
+  checkOnboard();
+  if (storageBlocked) {
+    console.warn('localStorage غير متاح — يتم استخدام تخزين مؤقت في الذاكرة فقط لهذه الجلسة.');
+  }
+} catch (e) {
+  document.body.innerHTML = `<div style="padding:40px 24px;text-align:center;font-family:Tahoma,Arial,sans-serif;background:#0a0a0a;color:#f0f0f0;min-height:100vh;direction:rtl">
+    <div style="font-size:40px;margin-bottom:14px">⚠️</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:10px;color:#c9a84c">حدث خطأ أثناء تحميل التطبيق</div>
+    <div style="font-size:13px;color:#888;margin-bottom:16px">${e.message}</div>
+    <div style="font-size:12px;color:#666">جرّب رفع الملف على استضافة (مثل Netlify) بدل فتحه مباشرة من الجهاز.</div>
+  </div>`;
+  console.error(e);
+}
 </script>
 </body>
 </html>
